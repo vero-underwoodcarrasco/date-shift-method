@@ -1,0 +1,157 @@
+---
+title: "Date Shift Method"
+author: "Veronica I. Underwood Carrasco & Katrina Ramsey"
+format: html
+editor: visual
+---
+
+# Data Shift in R
+
+## Consider this example dataset
+
+```{r, include=FALSE}
+origchildtbl <- data.frame(Study_ID = c("0000", 6834, 4142, 4290, 6563, 2906)
+               , Original_Date_1 = c("1/25/2016", "3/24/2017", "4/30/2017", "1/17/2016",  "8/3/2018", "6/17/2016")
+               , Original_Date_2 = c("9/23/2016", "8/6/2018",  "1/30/2018", "3/2/2016",  "9/17/2018", "9/24/2016"))
+```
+
+```{r}
+origchildtbl
+```
+
+### Make sure date columns can be read as dates
+
+```{r}
+#| warning: FALSE
+library(lubridate) #package needed to set date format
+
+#read dates as date format
+origchildtbl$Original_Date_1 <- lubridate::mdy(origchildtbl$Original_Date_1)
+origchildtbl$Original_Date_2 <- lubridate::mdy(origchildtbl$Original_Date_2)
+
+origchildtbl
+```
+
+## Create data folders for saving final results
+
+```{r}
+#| warning: FALSE
+# Best practice is to create a Project for your work
+library(here) #package needed to auto-locate your current working directory
+studyfld <- here()
+
+# create separate folders for crosswalk table and final de-identified data
+crosswalkfld <- paste(studyfld, "Crosswalk",     #naming location
+                      sep = "/")
+deidentfld   <- paste(studyfld, "Deidentified",  #naming location
+                      sep = "/")
+```
+
+## Initial steps for reproducibility
+
+```{r}
+# set random number seed so that commands will produce the same set of random numbers each time it is run
+set.seed(1234321) #example
+
+#sort the original table by unique study identifier to make sure you can reproduce results in the same way
+newchildtbl <- origchildtbl[order(origchildtbl$Study_ID),]
+
+newchildtbl
+```
+
+### Note. Converting from Child ID to Study ID
+
+```{r}
+#| warning: false
+library(dplyr)    #for data transformation
+library(magrittr) #for pipe operator
+
+## if starting with system-specific child ID (i.e., an identifier)
+newchildtbl1 <- newchildtbl %>% 
+                     rename(Child_ID = Study_ID) #changing label for example
+
+newchildtbl1
+
+# generate a uniform random number and sort by it
+newchildtbl1$rand1 <- runif(n = nrow(newchildtbl1))
+newchildtbl1 <- newchildtbl1[order(newchildtbl1$rand1),]
+
+# then add an ID that is the row number in the new, random order
+newchildtbl2 <- dplyr::mutate(newchildtbl1, Study_ID = row_number())
+#drop rand1 column 
+newchildtbl2 <- newchildtbl2 %>%
+                select(Child_ID, Original_Date_1, Original_Date_2, Study_ID) 
+
+newchildtbl2
+```
+
+## Date Shift
+
+```{r}
+#new column for date shift integer
+newchildtbl$dateshift <- sample(-21:21              # the range
+                                , nrow(newchildtbl) # number of rows to generate
+                                , replace=T)        # with replacement (allow numbers to be reused)
+
+newchildtbl
+```
+
+### Apply Date Shift to Original Dates
+
+```{r}
+newchildtbl$New_Date_1 <- newchildtbl$Original_Date_1 + newchildtbl$dateshift
+newchildtbl$New_Date_2 <- newchildtbl$Original_Date_2 + newchildtbl$dateshift
+```
+
+### Reorder and select needed columns
+
+```{r}
+newchildtbl <- newchildtbl %>%
+                    select(Study_ID, Original_Date_1, Original_Date_2,
+                           dateshift, New_Date_1, New_Date_2)
+
+newchildtbl
+```
+
+#### If starting with Child ID:
+
+```{r, include=FALSE}
+#new column for date shift integer
+newchildtbl2$dateshift <- sample(-21:21              # the range
+                                , nrow(newchildtbl2) # number of rows to generate
+                                , replace=T)         # with replacement (allow numbers to be reused)
+
+#apply date shift
+newchildtbl2$New_Date_1 <- newchildtbl2$Original_Date_1 + newchildtbl2$dateshift
+newchildtbl2$New_Date_2 <- newchildtbl2$Original_Date_2 + newchildtbl2$dateshift
+
+#reorder and select needed columns 
+newchildtbl2 <- newchildtbl2 %>%
+                    select(Child_ID, Original_Date_1, Original_Date_2,
+                           dateshift, Study_ID, New_Date_1, New_Date_2)
+```
+
+```{r}
+newchildtbl2
+```
+
+## Save two files
+
+### Cross-walk copy for future reference
+
+```{r}
+#all variables, including identifiers
+xwalkfn <- paste(crosswalkfld, "CrosswalkChildTable.RDS", sep = "/")
+saveRDS(newchildtbl2, file = xwalkfn)
+```
+
+### De-identified copy for sharing with collaborating researchers
+
+```{r}
+# study-specific, de-identified variables 
+deident <- select(newchildtbl, Study_ID, New_Date_1, New_Date_2) # select columns
+deidentfn <- paste(deidentfld, "DeIDChildTable.csv", sep = "/")  # file name and path (Windows)
+write.csv(deident            # dataframe name to export (csv for general use)
+          , file = deidentfn # to the file and path defined above
+          , row.names = FALSE)
+```
